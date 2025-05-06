@@ -6,16 +6,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
+    ApiClient,
     AsyncApiClient,
     AsyncMessagingApi,
     Configuration,
+    ImageMessage,
     ReplyMessageRequest,
-    TextMessage,
 )
 from linebot.v3.webhook import WebhookParser
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import ImageMessageContent
+from src.util import TmpImageDownLoader
 
 root_dir = Path(__file__).resolve().parent
+tmp_dir = root_dir / "tmp"
+tmp_dir.mkdir(exist_ok=True, parents=True)
+
 load_dotenv(root_dir / ".env")
 
 # get channel_secret and channel_access_token from your environment variable
@@ -32,6 +37,7 @@ configuration = Configuration(access_token=channel_access_token)
 
 app = FastAPI()
 async_api_client = AsyncApiClient(configuration)
+sync_api_client = ApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
 parser = WebhookParser(channel_secret)
 
@@ -55,16 +61,25 @@ async def handle_callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
-        if not isinstance(event, MessageEvent):
-            continue
-        if not isinstance(event.message, TextMessageContent):
-            continue
+        if isinstance(event.message, ImageMessageContent):
+            image_content_id = event.message.id
+            print(image_content_id)
 
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=event.message.text)],
-            )
-        )
+            with TmpImageDownLoader(
+                api_client=sync_api_client, content_id=image_content_id, tmp_dir=tmp_dir
+            ) as tmp_dl:
+                print(tmp_dl.tmp_path, tmp_dl.tmp_path.exists())
+
+                await line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[
+                            ImageMessage(
+                                original_content_url="https://i.gzn.jp/img/2018/01/15/google-gorilla-ban/00.jpg",
+                                preview_image_url="https://i.gzn.jp/img/2018/01/15/google-gorilla-ban/00.jpg",
+                            )
+                        ],
+                    )
+                )
 
     return "OK"
