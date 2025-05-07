@@ -1,0 +1,9 @@
+services:
+  api:
+    build:
+      context: .
+    container_name: "api"
+    volumes:
+      - .:/opt/api
+    ports:
+      - "8000:8000"

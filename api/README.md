@@ -17,6 +17,26 @@ ngrok http 8000
 - LINE Webhook URL に登録
   - Messaging API > Webhook URL から設定
 
+## Docker コンテナで開発する場合
+
+```shell
+# ビルド
+docker compose build
+# 起動
+docker compose up
+# 削除
+docker rm api
+```
+
+# デプロイ
+
+- 依存関係を更新
+
+```shell
+cd api
+uv pip freeze > requirements.txt
+```
+
 # メモ
 
 - Python SDK

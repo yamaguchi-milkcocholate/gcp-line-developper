@@ -60,6 +60,10 @@ async def handle_callback(request: Request):
     body = await request.body()
     body = body.decode()
 
+    base_url = str(request.base_url)
+    if base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+
     try:
         events = parser.parse(body, signature)
     except InvalidSignatureError:
@@ -67,62 +71,74 @@ async def handle_callback(request: Request):
 
     for event in events:
         if isinstance(event.message, ImageMessageContent):
-            image_content_id = event.message.id
+            try:
+                image_content_id = event.message.id
 
-            reply_messages = []
-            with TmpImageDownLoader(
-                api_client=sync_api_client, content_id=image_content_id, tmp_dir=tmp_dir
-            ) as tmp_dl:
-                # 1.OpenCVの線画
-                cv_line_draw(
-                    from_filepath=tmp_dl.tmp_path,
-                    to_filepath=tmp_dir / f"{image_content_id}_cv2.jpg",
-                    num_dilate_iter=1,
-                )
-                reply_messages += [
-                    TextMessage(text="✅ 画像1枚目の作成に成功しました"),
-                    ImageMessage(
-                        original_content_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
-                        preview_image_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
-                    ),
-                ]
-                # 2.Geminiの線画
-                try:
-                    LineDrawGenerationLifecycle(target_filepath=tmp_dl.tmp_path).run(
-                        output_line_draw_filepath=tmp_dir
-                        / f"{image_content_id}_gemini.jpg",
-                        output_color_filepath=tmp_dir
-                        / f"{image_content_id}_gemini_color.jpg",
+                reply_messages = []
+                with TmpImageDownLoader(
+                    api_client=sync_api_client,
+                    content_id=image_content_id,
+                    tmp_dir=tmp_dir,
+                ) as tmp_dl:
+                    # 1.OpenCVの線画
+                    cv_line_draw(
+                        from_filepath=tmp_dl.tmp_path,
+                        to_filepath=tmp_dir / f"{image_content_id}_cv2.jpg",
+                        num_dilate_iter=1,
                     )
                     reply_messages += [
-                        TextMessage(text="✅ 画像2、3枚目の作成に成功しました"),
+                        TextMessage(text="✅ 画像1枚目の作成に成功しました"),
                         ImageMessage(
-                            original_content_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
-                            preview_image_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
-                        ),
-                        ImageMessage(
-                            original_content_url=f"{request.base_url}images/{image_content_id}_gemini_color.jpg",
-                            preview_image_url=f"{request.base_url}images/{image_content_id}_gemini_color.jpg",
+                            original_content_url=f"{base_url}images/{image_content_id}_cv2.jpg",
+                            preview_image_url=f"{base_url}images/{image_content_id}_cv2.jpg",
                         ),
                     ]
-                except GeminiException as e:
-                    print(e)
-                    reply_messages += [
-                        TextMessage(
-                            text="❌ 画像2,3枚目の生成に失敗しました。もう一度お試しください。"
-                        ),
-                    ]
-
-            await line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token, messages=reply_messages
+                    # 2.Geminiの線画
+                    try:
+                        LineDrawGenerationLifecycle(
+                            target_filepath=tmp_dl.tmp_path
+                        ).run(
+                            output_line_draw_filepath=tmp_dir
+                            / f"{image_content_id}_gemini.jpg",
+                            output_color_filepath=tmp_dir
+                            / f"{image_content_id}_gemini_color.jpg",
+                        )
+                        reply_messages += [
+                            TextMessage(text="✅ 画像2、3枚目の作成に成功しました"),
+                            ImageMessage(
+                                original_content_url=f"{base_url}images/{image_content_id}_gemini.jpg",
+                                preview_image_url=f"{base_url}images/{image_content_id}_gemini.jpg",
+                            ),
+                            ImageMessage(
+                                original_content_url=f"{base_url}images/{image_content_id}_gemini_color.jpg",
+                                preview_image_url=f"{base_url}images/{image_content_id}_gemini_color.jpg",
+                            ),
+                        ]
+                    except GeminiException as e:
+                        print(e)
+                        reply_messages += [
+                            TextMessage(
+                                text="❌ 画像2,3枚目の生成に失敗しました。もう一度お試しください。"
+                            ),
+                        ]
+                await line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token, messages=reply_messages
+                    )
                 )
-            )
+            except Exception as e:
+                print(e)
+                await line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="❌ 処理に失敗しました")],
+                    )
+                )
         else:
             await line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="画像1枚を送信してください")],
+                    messages=[TextMessage(text="❌ 画像1枚を送信してください")],
                 )
             )
 
