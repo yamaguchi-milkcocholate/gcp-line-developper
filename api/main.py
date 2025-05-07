@@ -80,7 +80,7 @@ async def handle_callback(request: Request):
                     num_dilate_iter=1,
                 )
                 reply_messages += [
-                    TextMessage(text="・画像1枚目の作成に成功しました"),
+                    TextMessage(text="✅ 画像1枚目の作成に成功しました"),
                     ImageMessage(
                         original_content_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
                         preview_image_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
@@ -95,7 +95,7 @@ async def handle_callback(request: Request):
                         / f"{image_content_id}_gemini_color.jpg",
                     )
                     reply_messages += [
-                        TextMessage(text="・画像2、3枚目の作成に成功しました"),
+                        TextMessage(text="✅ 画像2、3枚目の作成に成功しました"),
                         ImageMessage(
                             original_content_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
                             preview_image_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
@@ -109,7 +109,7 @@ async def handle_callback(request: Request):
                     print(e)
                     reply_messages += [
                         TextMessage(
-                            text="画像2,3枚目の生成に失敗しました。もう一度お試しください。"
+                            text="❌ 画像2,3枚目の生成に失敗しました。もう一度お試しください。"
                         ),
                     ]
 
