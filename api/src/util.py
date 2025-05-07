@@ -19,4 +19,4 @@ class TmpImageDownLoader:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         print("後処理")
-        # self.tmp_path.unlink(missing_ok=True)
+        self.tmp_path.unlink(missing_ok=True)

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     ApiClient,
@@ -12,9 +13,12 @@ from linebot.v3.messaging import (
     Configuration,
     ImageMessage,
     ReplyMessageRequest,
+    TextMessage,
 )
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.webhooks import ImageMessageContent
+from src.gemini import GeminiException, LineDrawGenerationLifecycle
+from src.opencv import cv_line_draw
 from src.util import TmpImageDownLoader
 
 root_dir = Path(__file__).resolve().parent
@@ -36,6 +40,7 @@ if channel_access_token is None:
 configuration = Configuration(access_token=channel_access_token)
 
 app = FastAPI()
+app.mount("/images", StaticFiles(directory=str(tmp_dir)), name="tmp")
 async_api_client = AsyncApiClient(configuration)
 sync_api_client = ApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
@@ -63,23 +68,62 @@ async def handle_callback(request: Request):
     for event in events:
         if isinstance(event.message, ImageMessageContent):
             image_content_id = event.message.id
-            print(image_content_id)
 
+            reply_messages = []
             with TmpImageDownLoader(
                 api_client=sync_api_client, content_id=image_content_id, tmp_dir=tmp_dir
             ) as tmp_dl:
-                print(tmp_dl.tmp_path, tmp_dl.tmp_path.exists())
-
-                await line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[
-                            ImageMessage(
-                                original_content_url="https://i.gzn.jp/img/2018/01/15/google-gorilla-ban/00.jpg",
-                                preview_image_url="https://i.gzn.jp/img/2018/01/15/google-gorilla-ban/00.jpg",
-                            )
-                        ],
-                    )
+                # 1.OpenCVの線画
+                cv_line_draw(
+                    from_filepath=tmp_dl.tmp_path,
+                    to_filepath=tmp_dir / f"{image_content_id}_cv2.jpg",
+                    num_dilate_iter=1,
                 )
+                reply_messages += [
+                    TextMessage(text="・画像1枚目の作成に成功しました"),
+                    ImageMessage(
+                        original_content_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
+                        preview_image_url=f"{request.base_url}images/{image_content_id}_cv2.jpg",
+                    ),
+                ]
+                # 2.Geminiの線画
+                try:
+                    LineDrawGenerationLifecycle(target_filepath=tmp_dl.tmp_path).run(
+                        output_line_draw_filepath=tmp_dir
+                        / f"{image_content_id}_gemini.jpg",
+                        output_color_filepath=tmp_dir
+                        / f"{image_content_id}_gemini_color.jpg",
+                    )
+                    reply_messages += [
+                        TextMessage(text="・画像2、3枚目の作成に成功しました"),
+                        ImageMessage(
+                            original_content_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
+                            preview_image_url=f"{request.base_url}images/{image_content_id}_gemini.jpg",
+                        ),
+                        ImageMessage(
+                            original_content_url=f"{request.base_url}images/{image_content_id}_gemini_color.jpg",
+                            preview_image_url=f"{request.base_url}images/{image_content_id}_gemini_color.jpg",
+                        ),
+                    ]
+                except GeminiException as e:
+                    print(e)
+                    reply_messages += [
+                        TextMessage(
+                            text="画像2,3枚目の生成に失敗しました。もう一度お試しください。"
+                        ),
+                    ]
+
+            await line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token, messages=reply_messages
+                )
+            )
+        else:
+            await line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="画像1枚を送信してください")],
+                )
+            )
 
     return "OK"
